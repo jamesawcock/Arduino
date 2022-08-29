@@ -1,0 +1,135 @@
+#include <PID_v1.h>
+#include "VerySpecialLibraryThatMightWorkButProbablyNot.h"        //Contains the bridge code between the API and the Arduino Environment
+#include <Wire.h>
+#include <SPI.h>
+#include <SD.h>
+
+VerySpecialLibraryThatMightWorkButProbablyNot mySensor;         //Object that for the sensor 
+unsigned long lastStreamTime = 0;     //To store the last streamed time stamp
+const int streamPeriod = 1;          //To stream at 50Hz without using additional timers (time period(ms) =1000/frequency(Hz))
+int motor = 5;           // the PWM pin the signal to the FET is attached to
+int motor2 = 6;
+int motor3 = 9;
+int motor4 = 10;
+int speedy = 0;
+int speedy2 = 0;  
+int val;
+int vall;
+
+double Setpoint; // will be the desired value
+double Input; // angle sensor
+double Output; //motor contol
+double Kp=6, Ki=5, Kd=1; //PID parameters
+
+//create PID instance 
+PID myPID(&Input, &Output, &Setpoint, Kp, Ki, Kd, DIRECT);
+
+File myFile;
+
+
+void setup() {
+ Serial.begin (115200); 
+while (!Serial) {
+; // wait for serial port to connect. Needed for native USB port only
+}
+Serial.print("Initializing SD card...");
+if (!SD.begin(10)) {
+Serial.println("initialization failed!");
+while (1);
+}
+Serial.println("initialization done.");
+// open the file. note that only one file can be open at a time,
+// so you have to close this one before opening another.
+SD.remove("test.txt");
+myFile = SD.open("test.txt", FILE_WRITE);
+ Setpoint = 0; // hard code that angle value
+ myPID.SetMode(AUTOMATIC); //Turn the PID on 
+ myPID.SetTunings(Kp, Ki, Kd); // Adjust PID Values
+ myPID.SetOutputLimits(-255,255);
+ 
+ // put your setup code here, to run once:
+pinMode(motor, OUTPUT);
+pinMode(motor2, OUTPUT);
+  I2C.begin();                    //Initialize I2C communication to the let the library communicate with the sensor.
+  //Sensor Initialization
+  mySensor.initSensor();          //The I2C Address can be changed here inside this function in the library
+  mySensor.setOperationMode(OPERATION_MODE_NDOF);   //Can be configured to other operation modes as desired
+  mySensor.setUpdateMode(MANUAL);  //The default is AUTO. Changing to MANUAL requires calling the relevant update functions prior to calling the read functions
+  //Setting to MANUAL requires fewer reads to the sensor
+
+}
+
+void loop() {
+   if ((millis() - lastStreamTime) >= streamPeriod)
+  {
+    lastStreamTime = millis();
+    mySensor.updateEuler();        //Update the Euler data into the structure of the object
+    mySensor.updateCalibStatus();  //Update the Calibration Status
+    
+    myFile = SD.open("test.txt", FILE_WRITE);
+    
+    Serial.print("Time: ");
+    Serial.print(lastStreamTime);
+    Serial.print("ms ");
+
+    myFile.print("   Time:    ");
+    myFile.print(    lastStreamTime    );
+    myFile.print("    ms    ");
+
+    if(mySensor.readEulerHeading() >= 180){
+      val = mySensor.readEulerHeading() - 360;}
+      else{ val = mySensor.readEulerHeading();
+    }
+    Serial.print(" H: ");
+    Serial.print(val  ); //Heading data
+    Serial.print("deg ");
+
+    myFile.print("   H:   ");
+    myFile.print(    val     ); //Heading data
+    myFile.print("   deg   ");
+
+
+    
+                // reads the value of the potentiometer (value between 0 and 1023)
+     // sets the servo position according to the scaled value
+    Input = val; // scale it to use it with the servo (value between 0 and 180)
+    myPID.Compute(); // PID calculation
+    if(Output >= 0){ 
+               // sets the servo position according to the scaled value
+    analogWrite(motor2,Output);
+    analogWrite(motor4,Output);} 
+    else{
+    analogWrite(motor2,0);
+    analogWrite(motor4,0);}
+    
+    if(Output <= 0){  
+    analogWrite(motor,-Output);
+    analogWrite(motor3,-Output);} 
+    else{analogWrite(motor,0);
+    analogWrite(motor3,0);}
+
+    
+    // put your main code here, to run repeatedly:
+
+   Serial.print("   Input:   ");
+    Serial.print(  Input);
+
+    myFile.print("     Input:  ");
+    myFile.print(    Input    );
+
+    Serial.print("   motor:   ");
+    Serial.print(   Output   );
+
+    myFile.print("     motor:     ");
+    myFile.print(     Output     );
+
+    Serial.println();
+    myFile.println();
+
+    myFile.close();
+
+  
+
+  }  else {myFile.close();
+Serial.println("done.");
+  exit(6);}}
